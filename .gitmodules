@@ -1,0 +1,3 @@
+[submodule "hxcrypt"]
+	path = hxcrypt
+	url = https://github.com/hermo/hxcrypt

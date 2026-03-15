@@ -1,0 +1,11 @@
+# Build artifacts
+*.o
+*.a
+*.elf
+*.bin
+*.hex
+*.map
+
+# Test runner output
+test_vault
+vault.bin
