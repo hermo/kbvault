@@ -8,6 +8,9 @@
 #define KBV_MAX_SLOTS      5
 #define KBV_MAX_PWD_LEN    128   /* max stored password length */
 #define KBV_MAX_MASTER_LEN 64    /* max master/duress password length */
+#ifndef KBV_MIN_MASTER_LEN
+#define KBV_MIN_MASTER_LEN 12    /* min master password length (spec REQ-MASTER); host tests override */
+#endif
 
 /*
  * Flash layout constants — exposed for platform implementors and tests.

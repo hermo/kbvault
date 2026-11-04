@@ -431,6 +431,12 @@ static void authing_new_vault_commit(kbv_ctx_t *ctx)
         return;
     }
 
+    if (ctx->input_len < KBV_MIN_MASTER_LEN) {
+        input_reset(ctx);
+        ctx->output_cb("too short\npw?\n");
+        return;
+    }
+
     derive_prk_and_keys(ctx, ctx->input_buf, ctx->input_len);
 
     hx_blake2s(verify_tag, 32, "kbv.verify", 10, ctx->prk, 32);
@@ -516,6 +522,12 @@ static void settings_feed(kbv_ctx_t *ctx, char c)
     /* ── cmd_state 11: change master — accumulate new password ──────────── */
     case 11:
         if (is_enter(c)) {
+            if (ctx->input_len < KBV_MIN_MASTER_LEN) {
+                input_reset(ctx);
+                ctx->cmd_state = 10;
+                ctx->output_cb("too short\nkbv: ");
+                break;
+            }
             /* Save to cmd_buf and ask for confirmation */
             memcpy(ctx->cmd_buf, ctx->input_buf, ctx->input_len);
             ctx->cmd_buf_len = ctx->input_len;

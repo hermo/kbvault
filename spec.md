@@ -29,29 +29,51 @@ exclusively.
 
 ### 2. Threat Model
 
+*Updated 2026-11-04 after a security-audit interview.*
+
+#### Attacker
+
+A casual or opportunistic person with physical access: someone at the desk, a
+coworker, or a coercion moment. They can press keys, plug and unplug USB, and
+possibly open the case. They have no lab equipment and cannot extract flash.
+Vault loss is acceptable (passwords are backed up elsewhere); vault disclosure is not.
+
 #### In Scope
 
 | Threat | Mitigation |
 |---|---|
 | Shoulder surfing | Keyboard types stored password via HID |
-| Flash dump via debug interface | RDP1 — debug access triggers mass erase |
-| Offline brute-force of vault | KDF bound to unextractable unique ID + pepper |
+| Flash dump via debug interface | RDP1: debug access triggers mass erase |
 | Ciphertext manipulation | Encrypt-then-MAC, verified before decrypt |
-| Physical coercion | Duress password wipes vault, indistinguishable from wrong password |
-| Brute-force via HID injection | Exponential lockout after failed attempts (1 s → 30 s cap) |
+| Nonce reuse across slot writes | DRBG must be seeded and must not repeat nonces (REQ-RNG below) |
+| Guessing at the keyboard | Exponential backoff, 1 s to 30 s cap. RAM-only: a power cycle resets it, which is accepted |
+| Weak master password | Minimum length 12 enforced at setup and change-master (REQ-MASTER below). A pre-existing shorter master still unlocks |
 | Unattended unlocked device | 120-minute auto-lock |
 
-#### Out of Scope
+#### Out of Scope / Accepted
 
 | Threat | Reason |
 |---|---|
-| Compromised host | Assumed trusted enough |
-| Chip decapping / fault injection | Nation-state, out of scope |
-| Offline brute-force of flash dump | Non-standard PBKDF2-BLAKE2s pipeline (no hashcat module), high-entropy master password, UID-bound salt (unreadable at RDP1). See ADR 006. |
-| BT/2.4 GHz HID sniffing | Accepted risk — passwords are low-value duplicates |
+| Offline brute-force of a flash dump | Relies on RDP1 only. If RDP1 is bypassed the vault is considered lost. The KDF (4096 rounds, ADR 006) is not a defence here |
+| Compromised host | Assumed trusted enough. Menu/status text typed to the host and modifier presses during master entry are visible to it, and that is accepted |
+| Backoff reset by power cycle | The attacker is not assumed able to automate guesses |
+| Wipe without authentication | `KBV_WIPE` (Left Ctrl + key while locked) is intended; it is a DoS that is accepted |
+| DFU entry without authentication | `QK_BOOT` is intended; reflashing requires an RDP unlock that mass-erases the vault |
+| Power loss during erase/rewrite | Vault loss is acceptable |
+| Evil-maid reflash / no secure boot | Attacker is not assumed to have unsupervised time with the device |
+| Physical coercion | Rubber-hose attacks are assumed to succeed: the owner would just hand over the passwords. The duress password is a for-fun convenience wipe, not a security control. It is not required to be indistinguishable from a wrong password (it currently isn't: no red flash, no backoff, and the next login shows the new-vault prompt) |
+| Chip decapping / fault injection / RDP1 bypass | Nation-state or lab level, out of scope |
+| BT/2.4 GHz HID sniffing | Accepted risk: passwords are low-value duplicates |
 | Side-channel / power analysis | Low risk with ChaCha20; accepted |
 
----
+#### Requirements derived from the threat model
+
+- **REQ-RNG**: A nonce must never repeat for a given slot key. The DRBG is
+  reseeded from keystroke timing, and the entropy gate is a real health check
+  (observed ADC changes; 0 if stuck), not a counter.
+- **REQ-MASTER**: Master passwords shorter than 12 characters are rejected at
+  setup and change-master. The duress password has no minimum. The host tests build with
+  `-DKBV_MIN_MASTER_LEN=1`; firmware uses the default.
 
 ### 3. Cryptographic Design
 
@@ -116,7 +138,7 @@ prk = PBKDF2-BLAKE2s(input, bound_salt, 4096)   // one KDF call
 tag = BLAKE2s("kbv.verify", key = prk)
 
 if ct_equal(tag, stored_verify_tag)  → UNLOCK (keep prk in SRAM)
-elif ct_equal(tag, stored_duress_tag) → WIPE (flash + SRAM, then fake "wrong")
+elif ct_equal(tag, stored_duress_tag) → WIPE (flash + SRAM, then lock)
 else                                  → WRONG PASSWORD
 ```
 

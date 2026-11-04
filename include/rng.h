@@ -8,7 +8,7 @@
  * Three entropy sources:
  *   1. ADC internal channels (CH16 temp sensor + CH17 Vrefint) — collected at boot
  *   2. DWT cycle counter jitter — stirred continuously
- *   3. Keystroke timing — stirred per keypress
+ *   3. Keystroke timing — stirred per keypress, DRBG reseeded every 64 presses
  *
  * The conditioned entropy feeds hxcrypt's ChaCha20-BLAKE2s DRBG (hx_csprng_t).
  * kbv_plat_random() in kbv_platform_stm32.c calls rng_bytes().
@@ -35,8 +35,8 @@ void rng_feed_keypress(void);
 void rng_bytes(uint8_t *out, size_t len);
 
 /*
- * Return accumulated entropy estimate in bits.
- * ADC collection contributes ~2 bits/sample; each keypress ~4 bits.
- * Saturates at 65535.  Used by kbv_plat_entropy_bits().
+ * Return the boot-time entropy estimate in bits: the number of observed
+ * sample-to-sample ADC changes (0 if the ADC is stuck).  Keypress timing
+ * reseeds the DRBG but is not credited.  Used by kbv_plat_entropy_bits().
  */
 uint16_t rng_entropy_bits(void);

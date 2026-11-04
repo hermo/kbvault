@@ -13,6 +13,7 @@
 #include "timer.h"        /* QMK timer_read32() */
 #include "hxcrypt.h"
 #include "rng.h"
+#include "rng_health.h"
 
 /* ── CSPRNG state ─────────────────────────────────────────────────────────── */
 
@@ -92,16 +93,18 @@ static void adc_teardown(void)
  */
 static void adc_collect_entropy(void)
 {
+    rng_adc_health_t health;
+    rng_adc_health_init(&health);
     adc_setup();
 
     for (int i = 0; i < 512; i++) {
         uint8_t ch = (i & 1) ? 17 : 16;
         uint16_t s = adc_sample(ch);
 
-        /* Use bottom 2 LSBs of each sample (~1-2 bits real entropy per sample) */
+        /* Use bottom 2 LSBs of each sample */
         uint8_t noise = (uint8_t)(s & 0x03);
         hx_csprng_stir(&g_rng, &noise, 1);
-        if (g_entropy_bits < 65000u) g_entropy_bits = (uint16_t)(g_entropy_bits + 2u);
+        rng_adc_health_add(&health, i & 1, s);
 
         /* Stir DWT reading for cross-source mixing */
         uint32_t cyc = dwt_read();
@@ -109,6 +112,10 @@ static void adc_collect_entropy(void)
     }
 
     adc_teardown();
+
+    /* Entropy estimate = observed sample-to-sample changes (<=1 bit each);
+     * 0 if the ADC is stuck, which blocks vault writes via the gate. */
+    g_entropy_bits = health.changes;
 }
 
 /* ── Public API ───────────────────────────────────────────────────────────── */
@@ -143,9 +150,11 @@ void rng_feed_keypress(void)
     uint32_t delta = now - last_cyc;
     last_cyc       = now;
 
-    /* Feed all 32 bits of inter-keypress delta into the pool */
+    /* Feed all 32 bits of inter-keypress delta into the pool, and reseed the
+     * DRBG once 256 bytes have been stirred (no-op/error below that) so the
+     * timing actually reaches the output. */
     hx_csprng_stir(&g_rng, (uint8_t *)&delta, 4);
-    if (g_entropy_bits < 65000u) g_entropy_bits = (uint16_t)(g_entropy_bits + 4u);
+    (void)hx_csprng_seed(&g_rng);
 }
 
 uint16_t rng_entropy_bits(void)

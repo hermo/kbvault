@@ -44,14 +44,14 @@ per-slot enc\_key + mac\_key. The salt and a 32-byte pepper are stored in the
 vault header in flash. Keys are bound to the MCU's unique device ID (UID) so a
 flash dump is useless without the original hardware.
 
-**Duress password:** A second password silently wipes the vault (erases flash,
-zeroes SRAM) and returns to LOCKED — indistinguishable from a wrong password
-to an observer. The BLAKE2s verification tag for the duress key is stored
+**Duress password:** A second password wipes the vault (erases flash,
+zeroes SRAM) and returns to LOCKED. This is a convenience feature, not a security
+control (see spec §2). The BLAKE2s verification tag for the duress key is stored
 alongside the normal verify tag so the MCU cannot distinguish the two without
 the correct password.
 
 **Nonce:** 12 bytes from the CSPRNG, generated fresh on every slot write.
-Minimum 256 bits of accumulated entropy required before any write is accepted.
+The boot-time ADC health estimate must reach 256 bits before any write is accepted; the DRBG is reseeded from keystroke timing.
 
 **Lock on idle:** `kbv_tick()` checks an idle timer; the vault auto-locks
 after a configurable timeout. All key material in SRAM is zeroed on lock.
